@@ -102,13 +102,19 @@ button.icon { width: 40px; height: 40px; padding: 0; border: 0; display: grid; p
 button.icon svg { width: 18px; height: 18px; }
 button.icon .wave { transition: opacity 200ms ease; }
 button.icon[aria-pressed="false"] .wave { opacity: 0; }
-/* theme toggle: a moon in light mode (tap for dark), a sun in dark mode (tap for light) */
-#theme .sun { display: none; }
-#theme svg { transition: transform 300ms var(--ease-out); }
-body.is-dark #theme .moon { display: none; }
-body.is-dark #theme .sun { display: block; }
-@media (hover: hover) and (pointer: fine) { #theme:hover svg { transform: rotate(-18deg); } }
-body { transition: background-color 300ms ease, color 300ms ease; }
+/* theme toggle: a moon in light mode (tap for dark), a sun in dark mode (tap for light).
+   The two icons share one spot and swap with a spin, so the button itself morphs. */
+#theme { position: relative; }
+#theme svg { position: absolute; inset: 0; margin: auto; transition: transform 500ms var(--ease-out), opacity 300ms var(--ease-out); }
+#theme .sun { transform: rotate(-90deg) scale(.4); opacity: 0; }
+body.is-dark #theme .moon { transform: rotate(90deg) scale(.4); opacity: 0; }
+body.is-dark #theme .sun { transform: none; opacity: 1; }
+@media (hover: hover) and (pointer: fine) { #theme:hover .moon { transform: rotate(-18deg); } body.is-dark #theme:hover .sun { transform: rotate(45deg); } }
+
+/* the new theme spreads out from the toggle as a growing circle (View Transitions) */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { z-index: 2; }
+@media (prefers-reduced-motion: reduce) { #theme svg { transition: opacity 200ms ease; } }
 
 /* hold to confirm: slow linear fill while pressed, snappy release */
 .hold .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ink); color: var(--bg); clip-path: inset(0 100% 0 0); transition: clip-path 200ms var(--ease-out); pointer-events: none; }
@@ -749,11 +755,28 @@ html.android button.icon { width: 48px; height: 48px; }
     // status bar / browser chrome colour follows the page
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", dark ? "#0F1110" : "#F2F2EE"));
   }
+  let themeBusy = false;
   themeBtn.onclick = () => {
+    if (themeBusy) return;
     const next = isDark() ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", next);
-    try { localStorage.setItem("pomodoro-theme", next); } catch {}
-    syncTheme();
+    const apply = () => {
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("pomodoro-theme", next); } catch {}
+      syncTheme();
+    };
+    if (!document.startViewTransition || RM) { apply(); return; }
+    // circle grows from the button's centre until it covers the farthest corner of the screen
+    const r = themeBtn.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    themeBusy = true;
+    const vt = document.startViewTransition(apply);
+    vt.ready.then(() => {
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${end}px at ${x}px ${y}px)`] },
+        { duration: 750, easing: "cubic-bezier(0.77, 0, 0.175, 1)", pseudoElement: "::view-transition-new(root)" }
+      );
+    }).catch(() => {});
+    vt.finished.finally(() => { themeBusy = false; });
   };
   darkMQ.addEventListener?.("change", syncTheme);
   syncTheme();
