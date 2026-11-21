@@ -1,6 +1,6 @@
 // Pomodoro service worker: makes the app open offline once it has been visited.
 // Bump VERSION whenever cached files change so phones pick up the update.
-const VERSION = "pomodoro-v6";
+const VERSION = "pomodoro-v7";
 const CORE = [
   "./",
   "./index.html",
