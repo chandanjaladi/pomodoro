@@ -21,8 +21,9 @@ Once installed it opens full screen without browser bars, and it works offline a
 
 ## Designed per device
 
-- **iPhone / iPad:** Apple's Human Interface Guidelines. SF Pro, a large title, the Clock app's thin digits, and the same button colours as the laptop version. Tapping the minute wheel opens Apple's own picker wheel, with its native haptic ticks, and the tomato follows your pick.
-- **Android:** Material 3. Roboto, a top app bar title, filled and tonal pill buttons, and vibration feedback on the wheel.
+- **iPhone / iPad:** Apple's Human Interface Guidelines. SF Pro, a large title and the same button colours as the laptop version.
+- **Android:** Material 3. Roboto, a top app bar title, and filled and tonal pill buttons.
+- **Everywhere:** the same scroll wheel (the tomato turns as you scroll) and bold countdown digits.
 - **Laptops and landscape tablets:** two columns, with the tomato on the left and the controls on the right.
 
 ## Limits of a web app
