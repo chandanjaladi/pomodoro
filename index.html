@@ -143,6 +143,10 @@ html.ios .hold .overlay { background: var(--ink); color: var(--bg); }
 html.ios .picker .hl { border-radius: 9px; background: rgba(118, 118, 128, .14); }
 html.ios .wheel .it { font-size: calc(var(--ih) * .6); }
 html.ios .picker .unit { font-weight: 600; }
+/* on iPhone, a tap on the wheel opens Apple's own picker wheel (real haptic ticks); our wheel mirrors it */
+.picker .native { display: none; }
+html.ios .picker .native { display: block; position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; opacity: 0; font-size: 16px; -webkit-appearance: none; appearance: none; border: 0; background: transparent; color: transparent; cursor: pointer; }
+html.ios .wheel { pointer-events: none; }
 html.ios .msg { font-size: 15px; letter-spacing: -.01em; }
 html.ios button.icon { width: 44px; height: 44px; color: var(--muted); }
 
@@ -221,6 +225,7 @@ html.android button.icon { width: 48px; height: 48px; }
         <div class="hl" aria-hidden="true"></div>
         <div class="wheel" id="wheel" tabindex="0" role="listbox" aria-label="Minutes"></div>
         <span class="unit" aria-hidden="true">min</span>
+        <select class="native" id="native" aria-label="Minutes"></select>
       </div>
       <div class="time off" id="time" role="timer" aria-label="Time left"></div>
     </div>
@@ -526,8 +531,25 @@ html.android button.icon { width: 48px; height: 48px; }
     } catch {}
   }
 
+  /* ---------- "time's up" notification ----------
+     A website can't drive the vibration motor on iPhone, but a system notification vibrates even in silent mode.
+     iPhone allows this only for apps added to the Home Screen; permission is asked on the first Start on phones and tablets. */
+  const canNotify = "Notification" in window && "serviceWorker" in navigator && document.documentElement.classList.contains("touch");
+  function askNotify() {
+    try { if (canNotify && Notification.permission === "default") Notification.requestPermission().catch(() => {}); } catch {}
+  }
+  function notifyDone(mins) {
+    if (!canNotify || Notification.permission !== "granted") return;
+    navigator.serviceWorker.ready.then((reg) => reg.showNotification("Time's up", {
+      body: `${mins} ${mins === 1 ? "minute" : "minutes"} of focus done. Take a short break.`,
+      icon: "icons/icon-192.png", badge: "icons/icon-192.png",
+      tag: "pomodoro-done", renotify: true, vibrate: [220, 120, 220, 120, 220],
+    })).catch(() => {});
+  }
+
   /* ---------- minute wheel (0–55), Apple-style ---------- */
   const picker = $("picker"), wheel = $("wheel"), items = [];
+  const nativeSel = IS_IOS ? $("native") : null;
   wheel.insertAdjacentHTML("beforeend", '<div class="sp" aria-hidden="true"></div>');
   for (let m = 0; m <= 55; m++) {
     const it = document.createElement("div");
@@ -553,6 +575,7 @@ html.android button.icon { width: 48px; height: 48px; }
     });
     if (sel !== pickMin) {
       pickMin = sel;
+      if (nativeSel && +nativeSel.value !== sel) nativeSel.value = String(sel);
       if (!ignoreScroll) { click(0.035, 3000); haptic(false); }
       render();
     }
@@ -571,6 +594,23 @@ html.android button.icon { width: 48px; height: 48px; }
     else if (e.key === "Enter") { e.preventDefault(); start(); }
   });
   function placeWheel(m) { wheel.scrollTop = m * ih(); updateWheel(); }
+
+  // iPhone: the transparent native <select> sits over the wheel, so a tap opens iOS's picker wheel with its own haptics
+  if (nativeSel) {
+    for (let m = 0; m <= 55; m++) nativeSel.add(new Option(m + " min", String(m)));
+    nativeSel.value = String(pickMin);
+    let quietT = 0;
+    const applyNative = () => {
+      const m = +nativeSel.value;
+      if (m === pickMin && Math.abs(pickPos - m) < 0.01) return;
+      audio(); zeroHold = false;
+      ignoreScroll = true; clearTimeout(quietT);            // the wheel glides to the pick without a click per row
+      wheel.scrollTo({ top: m * ih(), behavior: RM ? "auto" : "smooth" });
+      quietT = setTimeout(() => (ignoreScroll = false), 900);
+    };
+    nativeSel.addEventListener("input", applyNative);
+    nativeSel.addEventListener("change", applyNative);
+  }
   addEventListener("resize", () => { ignoreScroll = true; placeWheel(pickMin); setTimeout(() => (ignoreScroll = false), 80); });
 
   /* ---------- message crossfade ---------- */
@@ -634,7 +674,7 @@ html.android button.icon { width: 48px; height: 48px; }
 
   /* ---------- actions ---------- */
   function start() {
-    audio();
+    audio(); askNotify();
     if (winding) return;
     if (atRest()) {
       if (pickMin === 0) { wheel.focus(); say("Scroll the wheel to pick a time first."); return; }
@@ -651,6 +691,7 @@ html.android button.icon { width: 48px; height: 48px; }
   let glow = null;
   function complete() {
     haptic(true);
+    notifyDone(Math.round(S.len / 60000));
     S.endAt = null; S.remaining = 0; S.count++; zeroHold = true; save(); wake(false);
     chime(); render(true);
     if (!RM) glow = performance.now();

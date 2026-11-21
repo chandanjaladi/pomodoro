@@ -21,13 +21,15 @@ Once installed it opens full screen without browser bars, and it works offline a
 
 ## Designed per device
 
-- **iPhone / iPad:** Apple's Human Interface Guidelines. SF Pro, a large title, filled and gray buttons, and the Clock app's thin digits. The minute wheel ticks with a haptic on each minute (iOS 17.4 or later).
+- **iPhone / iPad:** Apple's Human Interface Guidelines. SF Pro, a large title, the Clock app's thin digits, and the same button colours as the laptop version. Tapping the minute wheel opens Apple's own picker wheel, with its native haptic ticks, and the tomato follows your pick.
 - **Android:** Material 3. Roboto, a top app bar title, filled and tonal pill buttons, and vibration feedback on the wheel.
 - **Laptops and landscape tablets:** two columns, with the tomato on the left and the controls on the right.
 
 ## Limits of a web app
 
 The timer keeps exact time even if you switch apps or lock the phone, and it shows the right result when you come back. Phones pause web apps in the background, so the end-of-session chime only plays while the app is open on screen.
+
+**"Time's up" notification:** on phones and tablets the app asks for notification permission on your first Start. When a session ends it posts a system notification, which vibrates even when an iPhone is on silent. iPhone allows notifications only for web apps added to the Home Screen (iOS 16.4 or later). The notification appears when the app is open or was recently in use, because iOS suspends web apps soon after you leave them.
 
 ## Run it locally
 

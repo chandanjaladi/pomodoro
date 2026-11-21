@@ -1,6 +1,6 @@
 // Pomodoro service worker: makes the app open offline once it has been visited.
 // Bump VERSION whenever cached files change so phones pick up the update.
-const VERSION = "pomodoro-v2";
+const VERSION = "pomodoro-v3";
 const CORE = [
   "./",
   "./index.html",
@@ -21,6 +21,17 @@ self.addEventListener("activate", (event) => {
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+  );
+});
+
+// Tapping the "Time's up" notification brings the app back to the front.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) if ("focus" in c) return c.focus();
+      return self.clients.openWindow("./");
+    })
   );
 });
 
