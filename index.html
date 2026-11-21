@@ -1,0 +1,641 @@
+<title>Pomodoro</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap">
+<style>
+/* Layout: a single centred column. A glossy 3D tomato kitchen timer, seen from the front and slightly above, sits over a large readout.
+   Its top half turns the 0–55 minute band past a fixed pointer on the bottom half. */
+:root {
+  --bg: #F2F2EE; --bg-hi: #FBFBF8; --ink: #191B1A; --muted: #6C716D; --line: #DDDFD9;
+  --tomato: #D2261B;
+  --font: "Inter", "Segoe UI", system-ui, sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0F1110; --bg-hi: #1C1F1D; --ink: #EDEEEA; --muted: #8B908C; --line: #272B28; --tomato: #E0392B; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0F1110; --bg-hi: #1C1F1D; --ink: #EDEEEA; --muted: #8B908C; --line: #272B28; --tomato: #E0392B; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: radial-gradient(80% 60% at 50% 38%, var(--bg-hi), var(--bg) 70%); background-color: var(--bg); color: var(--ink); font-family: var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; }
+
+.stage { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 18px 28px; }
+.top { display: flex; justify-content: space-between; align-items: center; }
+.brand { font-weight: 600; font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.icons { display: flex; gap: 2px; }
+
+.center { display: grid; place-content: center; justify-items: center; gap: clamp(6px, 1.6vh, 16px); min-height: 0; }
+.scene { width: min(86vw, 36vh, 440px); aspect-ratio: 1; max-width: 100%; position: relative; }
+.scene canvas { width: 100%; height: 100%; display: block; }
+.scene .fallback { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: .9rem; padding: 24px; }
+
+/* rolling digits */
+.time { display: flex; align-items: center; font-weight: 200; font-size: clamp(2.6rem, min(12vw, 8vh), 4.8rem); line-height: 1; letter-spacing: -.045em; font-variant-numeric: tabular-nums; transition: opacity 200ms ease; }
+body.paused .time { opacity: .42; }
+.slot { position: relative; display: inline-block; overflow: hidden; height: 1.08em; }
+.slot .ph { visibility: hidden; }
+.slot .d { position: absolute; inset: 0; text-align: center; will-change: transform, opacity; }
+.colon { padding: 0 .02em; transform: translateY(-.06em); }
+/* readout cell: the minute wheel (before start) and the countdown (while running) share one place and crossfade */
+.readout { display: grid; place-items: center; --ih: clamp(28px, 4vh, 40px); min-height: calc(var(--ih) * 5); }
+.readout > * { grid-area: 1 / 1; transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out), filter 250ms var(--ease-out), visibility 0s; }
+.readout > .off { opacity: 0; transform: translateY(4px) scale(.98); filter: blur(2px); visibility: hidden; pointer-events: none; transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out), filter 250ms var(--ease-out), visibility 0s 250ms; }
+
+/* Apple-style minute wheel */
+.picker { position: relative; width: 220px; height: calc(var(--ih) * 5); }
+.picker .hl { position: absolute; left: 0; right: 0; top: 50%; height: var(--ih); transform: translateY(-50%); border-radius: 12px; background: color-mix(in srgb, var(--ink) 7%, transparent); pointer-events: none; }
+.wheel { position: relative; height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none; outline: none;
+  -webkit-mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent); mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent); }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel:focus-visible { outline: none; }
+.picker:has(.wheel:focus-visible) .hl { box-shadow: 0 0 0 2px var(--ink); }
+.wheel .sp { height: calc(var(--ih) * 2); }
+.wheel .it { height: var(--ih); line-height: var(--ih); scroll-snap-align: center; text-align: center; padding-right: 36px; font-size: calc(var(--ih) * .58); font-weight: 400; font-variant-numeric: tabular-nums; color: var(--muted); cursor: pointer; user-select: none; will-change: transform, opacity; }
+.wheel .it.sel { color: var(--ink); font-weight: 500; }
+.picker .unit { position: absolute; top: 50%; left: calc(50% + 14px); transform: translateY(-50%); font-size: calc(var(--ih) * .46); font-weight: 500; color: var(--ink); pointer-events: none; }
+.msg { font-size: .95rem; color: var(--muted); min-height: 1.45em; text-align: center; letter-spacing: .01em; }
+
+/* controls: two groups share one cell and crossfade */
+.bottom { display: grid; justify-items: center; gap: 14px; }
+.controls { display: grid; place-items: center; min-height: 50px; }
+.group { grid-area: 1 / 1; display: flex; gap: 10px; transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out), filter 250ms var(--ease-out), visibility 0s; }
+.group.off { opacity: 0; transform: translateY(4px) scale(.98); filter: blur(2px); pointer-events: none; visibility: hidden; transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out), filter 250ms var(--ease-out), visibility 0s 250ms; }
+
+button { font: inherit; font-weight: 500; font-size: .95rem; cursor: pointer; border-radius: 999px; padding: 12px 26px; color: var(--ink); background: transparent; border: 1px solid var(--line); position: relative; overflow: hidden; transition: transform 160ms var(--ease-out), border-color 200ms ease, background-color 200ms ease; }
+button:active { transform: scale(.97); }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+@media (hover: hover) and (pointer: fine) { button:hover { border-color: var(--muted); } button.icon:hover { color: var(--ink); } }
+button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); min-width: 148px; box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 10px 24px -12px rgba(0, 0, 0, .45); }
+button:not(.primary):not(.icon) { background: color-mix(in srgb, var(--bg-hi) 70%, transparent); }
+button.icon { width: 40px; height: 40px; padding: 0; border: 0; display: grid; place-items: center; color: var(--muted); }
+button.icon svg { width: 18px; height: 18px; }
+button.icon .wave { transition: opacity 200ms ease; }
+button.icon[aria-pressed="false"] .wave { opacity: 0; }
+
+/* hold to confirm: slow linear fill while pressed, snappy release */
+.hold .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ink); color: var(--bg); clip-path: inset(0 100% 0 0); transition: clip-path 200ms var(--ease-out); pointer-events: none; }
+.hold.holding { transform: scale(.97); }
+.hold.holding .overlay { clip-path: inset(0 0 0 0); transition: clip-path 2s linear; }
+
+.tally { display: flex; gap: 6px; align-items: center; min-height: 10px; }
+.tally i { width: 8px; height: 8px; border-radius: 50%; background: var(--tomato); }
+.tally span { font-size: .75rem; color: var(--muted); letter-spacing: .04em; margin-left: 4px; }
+
+/* quiet chrome while focusing: slow to leave, quick to return */
+.fade { transition: opacity 200ms var(--ease-out); }
+body.calm .fade { opacity: 0; pointer-events: none; transition: opacity 600ms ease; }
+body.calm { cursor: none; }
+
+@media (prefers-reduced-motion: reduce) { .group, .group.off { transform: none; filter: none; } }
+</style>
+
+<main class="stage">
+  <div class="top fade" id="top">
+    <div class="brand">Pomodoro</div>
+    <div class="icons">
+      <button class="icon" id="sound" aria-pressed="false" aria-label="Ticking sound" title="Ticking sound">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8v4h3l4 3V5L6 8H3z"/><path class="wave" d="M13.5 7.5a3.5 3.5 0 010 5M15.5 5a7 7 0 010 10"/></svg>
+      </button>
+      <button class="icon" id="fs" aria-label="Full screen" title="Full screen">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="center">
+    <div class="scene" id="scene" role="img" aria-label="Tomato kitchen timer"></div>
+    <div class="readout">
+      <div class="picker" id="picker">
+        <div class="hl" aria-hidden="true"></div>
+        <div class="wheel" id="wheel" tabindex="0" role="listbox" aria-label="Minutes"></div>
+        <span class="unit" aria-hidden="true">min</span>
+      </div>
+      <div class="time off" id="time" role="timer" aria-label="Time left"></div>
+    </div>
+    <div class="msg fade" id="msg">Set a time, then focus on one thing.</div>
+  </div>
+
+  <div class="bottom">
+    <div class="controls fade" id="controls">
+      <div class="group" id="g-idle"><button class="primary" id="start">Start</button></div>
+      <div class="group off" id="g-run" inert>
+        <button id="pause">Pause</button>
+        <button class="hold" id="quit">Hold to reset<span class="overlay" aria-hidden="true">Hold to reset</span></button>
+      </div>
+    </div>
+    <div class="tally fade" id="tally"></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const DEFAULT_MIN = 55;
+  const KEY = "pomodoro-v4";
+  const $ = (id) => document.getElementById(id);
+  const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+  const today = () => new Date().toDateString();
+
+  /* ---------- curves ---------- */
+  function bezier(x1, y1, x2, y2) {
+    const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx, cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+    const sx = (t) => ((ax * t + bx) * t + cx) * t, sy = (t) => ((ay * t + by) * t + cy) * t;
+    return (x) => {
+      if (x <= 0) return 0; if (x >= 1) return 1;
+      let lo = 0, hi = 1, t = x;
+      for (let i = 0; i < 40; i++) { if (sx(t) < x) lo = t; else hi = t; t = (lo + hi) / 2; }
+      return sy(t);
+    };
+  }
+  const easeInOut = bezier(0.77, 0, 0.175, 1);
+  const easeOut = bezier(0.23, 1, 0.32, 1);
+
+  /* ---------- state ---------- */
+  let S = { endAt: null, len: DEFAULT_MIN * 60000, remaining: DEFAULT_MIN * 60000, day: today(), count: 0, tick: false };
+  try { Object.assign(S, JSON.parse(localStorage.getItem(KEY)) || {}); } catch {}
+  if (S.day !== today()) { S.day = today(); S.count = 0; }
+  // every fresh visit starts at 55; a session that is running or paused is restored as it was
+  if (!S.endAt && (S.remaining >= S.len || S.remaining <= 0)) { S.len = DEFAULT_MIN * 60000; S.remaining = S.len; }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
+  const running = () => S.endAt !== null;
+  const left = () => (running() ? Math.max(0, S.endAt - Date.now()) : S.remaining);
+  const atRest = () => !running() && (S.remaining >= S.len || S.remaining <= 0);
+  const fmt = (ms) => { const s = Math.ceil(ms / 1000); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
+  let pickMin = DEFAULT_MIN, pickPos = DEFAULT_MIN, zeroHold = false, winding = false;
+  // minute that should sit over the pointer: the wheel's live position at rest, the time left while active
+  const liveMinutes = () => (atRest() ? (zeroHold ? 0 : pickPos) : left() / 60000);
+
+  /* =====================================================================
+     3D tomato
+     ===================================================================== */
+  const scene3 = { ok: false, needsRender: true };
+  (function build3D() {
+    const host = $("scene");
+    if (!window.THREE) { host.innerHTML = '<div class="fallback">The 3D tomato couldn’t load. The timer still works.</div>'; return; }
+    let renderer;
+    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" }); }
+    catch { host.innerHTML = '<div class="fallback">3D isn’t available in this browser. The timer still works.</div>'; return; }
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.setClearColor(0x000000, 0);
+    host.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+    camera.position.set(0, 1.75, 4.75);
+    camera.lookAt(0, -0.2, 0);
+
+    /* studio environment: dark room with soft boxes, so the gloss reflects light the way the product photos do */
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const env = new THREE.Scene();
+    env.add(new THREE.Mesh(new THREE.BoxGeometry(14, 14, 14), new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.BackSide })));
+    const panel = (w, h, x, y, z, k) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      m.material.color.setScalar(k); m.position.set(x, y, z); m.lookAt(0, 0, 0); env.add(m);
+    };
+    panel(6, 3.2, -4.2, 4.5, 3.5, 7);   // key softbox, top left front
+    panel(2.2, 6, 5.5, 1.2, 2.5, 3.2);  // tall strip, right
+    panel(7, 7, 0, 6.8, 0, 2.2);        // ceiling bounce
+    panel(8, 1.6, 0, 0.4, 6.8, 1.6);    // front fill
+    panel(8, 4, 0, -6.5, 0, 0.9);       // floor bounce
+    scene.environment = pmrem.fromScene(env, 0.035).texture;
+    const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(-3, 5, 4); scene.add(key);
+
+    /* ---- body profile (x = radius, y = height), bottom pole to top dimple ---- */
+    const SY = 1.2; // the real timer is about as tall as it is wide
+    const V = (x, y) => new THREE.Vector2(x, y);
+    const VP = (x, y) => new THREE.Vector2(x, y * SY);
+    const prof = new THREE.SplineCurve([
+      VP(0, -0.80), VP(0.30, -0.80), VP(0.58, -0.76), VP(0.80, -0.64), VP(0.95, -0.44), VP(1.02, -0.20), VP(1.02, 0.02),
+      VP(0.97, 0.24), VP(0.86, 0.43), VP(0.68, 0.58), VP(0.45, 0.665), VP(0.24, 0.655), VP(0.08, 0.615), VP(0, 0.60),
+    ]).getSpacedPoints(520);
+    const YS = -0.22 * SY, GAP = 0.006;          // seam height and half-gap
+    let iSeam = prof.findIndex((p) => p.y >= YS);
+    const xAtY = (y) => { for (let i = 1; i < iSeam + 40; i++) if (prof[i].y >= y) { const a = prof[i - 1], b = prof[i], t = (y - a.y) / (b.y - a.y); return a.x + (b.x - a.x) * t; } return 1; };
+    const XS = xAtY(YS);
+
+    /* lobes: seven soft ribs on the upper half, with creases dipping toward the calyx */
+    const sm = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+    function lobeShape(r, y, phi) {
+      const lobe = Math.pow(Math.abs(Math.cos(3.5 * phi)), 0.55);
+      const vary = 1 + 0.18 * Math.sin(2 * phi + 1.3);
+      const fade = sm(0.12, 0.5, r) * vary;
+      return { f: 1 + 0.055 * sm(YS + 0.08, 0.45 * SY, y) * fade * (lobe - 0.72), dy: -0.05 * (1 - lobe) * sm(0.3 * SY, 0.64 * SY, y) * fade };
+    }
+    function deform(geo) {
+      const p = geo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i), z = p.getZ(i), r = Math.hypot(x, z);
+        if (r < 1e-5) continue;
+        const { f, dy } = lobeShape(r, y, Math.atan2(x, z));
+        p.setXYZ(i, x * f, y + dy, z * f);
+      }
+    }
+    // lathe duplicates the first column at 360°; average normals there so no seam line shows when it turns
+    function lathe(points, segs, lobed) {
+      const g = new THREE.LatheGeometry(points, segs);
+      if (lobed) deform(g);
+      g.computeVertexNormals();
+      const n = g.attributes.normal, P = points.length;
+      for (let j = 0; j < P; j++) {
+        const a = j, b = segs * P + j;
+        const x = (n.getX(a) + n.getX(b)) / 2, y = (n.getY(a) + n.getY(b)) / 2, z = (n.getZ(a) + n.getZ(b)) / 2;
+        const l = Math.hypot(x, y, z) || 1;
+        n.setXYZ(a, x / l, y / l, z / l); n.setXYZ(b, x / l, y / l, z / l);
+      }
+      return g;
+    }
+    // a thin shell that follows the body between two heights, pushed out a hair, for printed markings
+    function sliceProfile(y0, y1, push) {
+      const out = [];
+      const add = (x, y, i) => {
+        const a = prof[Math.max(0, i - 1)], b = prof[Math.min(prof.length - 1, i + 1)];
+        let nx = b.y - a.y, ny = -(b.x - a.x); const l = Math.hypot(nx, ny) || 1;
+        out.push(V(x + (nx / l) * push, y + (ny / l) * push));
+      };
+      const i0 = prof.findIndex((p) => p.y >= y0), i1 = prof.findIndex((p) => p.y >= y1);
+      add(xAtY(y0), y0, i0);
+      for (let i = i0; i < i1; i++) add(prof[i].x, prof[i].y, i);
+      add(xAtY(y1), y1, i1);
+      return out;
+    }
+
+    const linear = (hex) => new THREE.Color(hex).convertSRGBToLinear();
+    const plastic = new THREE.MeshPhysicalMaterial({ color: linear(0xC90E07), roughness: 0.46, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.035, envMapIntensity: 0.85 });
+    const leafMat = new THREE.MeshPhysicalMaterial({ color: linear(0x1B4026), roughness: 0.5, clearcoat: 0.35, clearcoatRoughness: 0.2, side: THREE.DoubleSide });
+    const aniso = renderer.capabilities.getMaxAnisotropy();
+
+    const top = new THREE.Group(), bottom = new THREE.Group();
+    scene.add(top, bottom);
+
+    // top shell (turns) and bottom shell (fixed), each curling inward at the seam to form the groove
+    const topPts = [V(XS * 0.965, YS + GAP), V(XS - 0.004, YS + GAP + 0.006)].concat(prof.filter((p, i) => i > iSeam && p.y > YS + GAP + 0.012));
+    const botPts = prof.filter((p, i) => i < iSeam && p.y < YS - GAP - 0.012).concat([V(XS - 0.004, YS - GAP - 0.006), V(XS * 0.965, YS - GAP)]);
+    top.add(new THREE.Mesh(lathe(topPts, 192, true), plastic));
+    bottom.add(new THREE.Mesh(lathe(botPts, 192, false), plastic));
+    const groove = new THREE.Mesh(new THREE.CylinderGeometry(XS * 0.965, XS * 0.965, GAP * 2 + 0.004, 96, 1, true), new THREE.MeshBasicMaterial({ color: 0x2a0402, side: THREE.DoubleSide }));
+    groove.position.y = YS; bottom.add(groove);
+
+    /* ---- printed minute band: 0–55, a tick every minute, numbers every five ---- */
+    const BW = 4096, BH = 184, BAND_H = BH / (BW / (2 * Math.PI * 1.02));
+    const bandCanvas = document.createElement("canvas"); bandCanvas.width = BW; bandCanvas.height = BH;
+    const bandTex = new THREE.CanvasTexture(bandCanvas);
+    bandTex.encoding = THREE.sRGBEncoding; bandTex.anisotropy = aniso; bandTex.wrapS = THREE.RepeatWrapping;
+    function drawBand() {
+      const c = bandCanvas.getContext("2d");
+      c.clearRect(0, 0, BW, BH); c.fillStyle = "#FBFAF7";
+      c.font = '600 78px Inter, "Helvetica Neue", Arial, sans-serif'; c.textAlign = "center"; c.textBaseline = "alphabetic";
+      for (let m = 0; m < 60; m++) {
+        const major = m % 5 === 0, w = major ? 11 : 8, h = major ? 66 : 40;
+        for (const off of [0, BW, -BW]) {
+          const x = (m / 60) * BW + off;
+          if (x < -80 || x > BW + 80) continue;
+          c.fillRect(x - w / 2, BH - 10 - h, w, h);
+          if (major) c.fillText(String(m), x, BH - 10 - 66 - 16);
+        }
+      }
+      bandTex.needsUpdate = true; scene3.needsRender = true;
+    }
+    drawBand();
+    if (document.fonts && document.fonts.load) document.fonts.load('600 78px Inter').then(drawBand, () => {});
+    const inkMat = (map) => new THREE.MeshPhysicalMaterial({ map, transparent: true, roughness: 0.34, clearcoat: 1, clearcoatRoughness: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    top.add(new THREE.Mesh(lathe(sliceProfile(YS + GAP + 0.01, YS + GAP + 0.01 + BAND_H, 0.0016), 192, true), inkMat(bandTex)));
+
+    /* ---- fixed pointer: a white triangle under the band ---- */
+    const PW = 4096, PH = 96, P_H = PH / (PW / (2 * Math.PI * 1.02));
+    const pc = document.createElement("canvas"); pc.width = PW; pc.height = PH;
+    const pcx = pc.getContext("2d"); pcx.fillStyle = "#FBFAF7";
+    for (const off of [0, PW]) { pcx.beginPath(); pcx.moveTo(off, 12); pcx.lineTo(off + 34, 74); pcx.lineTo(off - 34, 74); pcx.closePath(); pcx.fill(); }
+    const pTex = new THREE.CanvasTexture(pc); pTex.encoding = THREE.sRGBEncoding; pTex.anisotropy = aniso;
+    bottom.add(new THREE.Mesh(lathe(sliceProfile(YS - GAP - 0.03 - P_H, YS - GAP - 0.03, 0.0016), 192, false), inkMat(pTex)));
+
+    /* ---- calyx: six slender sepals lying on the top, a small dome and the stem nub ---- */
+    const topRegion = prof.filter((p) => p.y > 0.2 * SY); // x decreases monotonically toward the centre
+    const topY = (x) => {
+      for (let i = 1; i < topRegion.length; i++) if (topRegion[i].x <= x) { const a = topRegion[i - 1], b = topRegion[i], t = (x - a.x) / (b.x - a.x || 1); return a.y + (b.y - a.y) * t; }
+      return topRegion[topRegion.length - 1].y;
+    };
+    const surf = (rho, phi) => {
+      let x = rho, y = topY(x);
+      for (let k = 0; k < 3; k++) { const { f } = lobeShape(x, y, phi); x = rho / f; y = topY(x); }
+      return y + lobeShape(x, y, phi).dy;
+    };
+    const lens = [0.74, 0.62, 0.8, 0.66, 0.72, 0.6], jit = [0.05, -0.08, 0.02, 0.09, -0.04, 0.06], bend = [0.22, -0.18, 0.15, -0.25, 0.2, -0.12];
+    for (let k = 0; k < 6; k++) {
+      const NS = 30, NT = 8, verts = [], idx = [];
+      const psi = k * Math.PI / 3 + jit[k] + 0.35;
+      for (let i = 0; i <= NS; i++) {
+        const s = i / NS, rho = 0.03 + s * lens[k];
+        const w = 0.13 * Math.pow(1 - s, 0.85) * (0.4 + 0.6 * Math.min(1, s * 4));
+        for (let j = 0; j <= NT; j++) {
+          const t = -1 + (2 * j) / NT, ang = psi + bend[k] * s * s + (t * w) / Math.max(rho, 0.06);
+          const y = surf(rho, ang) + 0.011 + 0.012 * (1 - t * t) * (1 - s) + 0.014 * Math.pow(s, 3);
+          verts.push(rho * Math.sin(ang), y, rho * Math.cos(ang));
+        }
+      }
+      for (let i = 0; i < NS; i++) for (let j = 0; j < NT; j++) {
+        const a = i * (NT + 1) + j, b = a + NT + 1;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3)); g.setIndex(idx); g.computeVertexNormals();
+      top.add(new THREE.Mesh(g, leafMat));
+    }
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.16, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), leafMat);
+    dome.scale.y = 0.32; dome.position.y = topY(0) + 0.006; top.add(dome);
+    const stem = new THREE.Group();
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.042, 0.11, 24), leafMat); stalk.position.y = 0.055;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.03, 20, 12), leafMat); cap.position.y = 0.11; cap.scale.y = 0.7;
+    stem.add(stalk, cap); stem.position.y = topY(0) + 0.02; stem.rotation.z = -0.14; stem.rotation.x = 0.08; top.add(stem);
+
+    /* ---- soft contact shadow on the floor ---- */
+    const sc = document.createElement("canvas"); sc.width = sc.height = 256;
+    const scx = sc.getContext("2d"), grd = scx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    grd.addColorStop(0, "rgba(0,0,0,0.5)"); grd.addColorStop(0.45, "rgba(0,0,0,0.22)"); grd.addColorStop(1, "rgba(0,0,0,0)");
+    scx.fillStyle = grd; scx.fillRect(0, 0, 256, 256);
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.7), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false, toneMapped: false }));
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = -0.8 * 1.2 - 0.005; scene.add(shadow);
+
+    function resize() {
+      const w = host.clientWidth || 300;
+      renderer.setSize(w, w, false); camera.aspect = 1; camera.updateProjectionMatrix(); scene3.needsRender = true;
+    }
+    resize(); addEventListener("resize", resize);
+    if (window.ResizeObserver) new ResizeObserver(resize).observe(host);
+
+    Object.assign(scene3, { ok: true, renderer, scene, camera, top });
+  })();
+
+  /* ---------- rolling digits ---------- */
+  const timeEl = $("time"), slots = [];
+  "00:00".split("").forEach((ch) => {
+    if (ch === ":") { const c = document.createElement("span"); c.className = "colon"; c.textContent = ":"; timeEl.appendChild(c); return; }
+    const s = document.createElement("span"); s.className = "slot";
+    s.innerHTML = '<span class="ph">0</span>';
+    const d = document.createElement("span"); d.className = "d"; d.textContent = "0"; s.appendChild(d);
+    s.cur = d; s.ch = "0"; timeEl.appendChild(s); slots.push(s);
+  });
+  let shownSecs = 0;
+  function showTime(str, animate) {
+    const secs = +str.slice(0, 2) * 60 + +str.slice(3);
+    const dir = secs < shownSecs ? 1 : -1;
+    shownSecs = secs;
+    const chars = str.replace(":", "").split("");
+    let changed = false;
+    slots.forEach((s, i) => {
+      if (s.ch === chars[i]) return;
+      changed = true; s.ch = chars[i];
+      const old = s.cur, nu = document.createElement("span");
+      nu.className = "d"; nu.textContent = chars[i]; s.appendChild(nu); s.cur = nu;
+      s.querySelectorAll(".d").forEach((el) => { if (el !== old && el !== nu) el.remove(); });
+      if (!animate || RM) { old.remove(); return; }
+      old.animate([{ transform: "translateY(0)", opacity: 1 }, { transform: `translateY(${dir * 45}%)`, opacity: 0 }], { duration: 240, easing: EASE_OUT, fill: "forwards" }).onfinish = () => old.remove();
+      nu.animate([{ transform: `translateY(${-dir * 45}%)`, opacity: 0 }, { transform: "translateY(0)", opacity: 1 }], { duration: 240, easing: EASE_OUT });
+    });
+    if (changed) timeEl.setAttribute("aria-label", "Time left " + str);
+  }
+
+  /* ---------- minute wheel (0–55), Apple-style ---------- */
+  const picker = $("picker"), wheel = $("wheel"), items = [];
+  wheel.insertAdjacentHTML("beforeend", '<div class="sp" aria-hidden="true"></div>');
+  for (let m = 0; m <= 55; m++) {
+    const it = document.createElement("div");
+    it.className = "it"; it.textContent = m; it.setAttribute("role", "option"); it.dataset.m = m;
+    wheel.appendChild(it); items.push(it);
+  }
+  wheel.insertAdjacentHTML("beforeend", '<div class="sp" aria-hidden="true"></div>');
+  const ih = () => items[0].offsetHeight || 40;
+  let ignoreScroll = true, wheelRaf = 0;
+  function updateWheel() {
+    wheelRaf = 0;
+    const h = ih(), pos = Math.min(55, Math.max(0, wheel.scrollTop / h));
+    pickPos = pos;
+    const sel = Math.round(pos);
+    items.forEach((el, i) => {
+      const d = i - pos, ad = Math.abs(d);
+      if (ad > 3.5) { el.style.opacity = 0; return; }
+      // cylinder: rows squash and fade as they roll away from the centre
+      el.style.transform = `scaleY(${Math.cos(Math.min(ad, 3.5) * 0.36).toFixed(3)}) scale(${(1 - Math.min(ad, 3) * 0.04).toFixed(3)})`;
+      el.style.opacity = Math.max(0, 1 - ad * 0.3).toFixed(3);
+      el.classList.toggle("sel", i === sel);
+      if (i === sel) el.setAttribute("aria-selected", "true"); else el.removeAttribute("aria-selected");
+    });
+    if (sel !== pickMin) {
+      pickMin = sel;
+      if (!ignoreScroll) click(0.035, 3000);
+      render();
+    }
+  }
+  wheel.addEventListener("scroll", () => {
+    if (!ignoreScroll) zeroHold = false;
+    if (!wheelRaf) wheelRaf = requestAnimationFrame(updateWheel);
+  }, { passive: true });
+  wheel.addEventListener("pointerdown", () => audio());
+  wheel.addEventListener("click", (e) => { const it = e.target.closest(".it"); if (it) wheel.scrollTo({ top: +it.dataset.m * ih(), behavior: RM ? "auto" : "smooth" }); });
+  wheel.addEventListener("keydown", (e) => {
+    const step = { ArrowUp: -1, ArrowDown: 1, PageUp: -5, PageDown: 5 }[e.key];
+    if (step) { e.preventDefault(); wheel.scrollTo({ top: Math.min(55, Math.max(0, pickMin + step)) * ih(), behavior: RM ? "auto" : "smooth" }); }
+    else if (e.key === "Home" || e.key === "End") { e.preventDefault(); wheel.scrollTo({ top: (e.key === "Home" ? 0 : 55) * ih(), behavior: RM ? "auto" : "smooth" }); }
+    else if (e.key === "Enter") { e.preventDefault(); start(); }
+  });
+  function placeWheel(m) { wheel.scrollTop = m * ih(); updateWheel(); }
+  addEventListener("resize", () => { ignoreScroll = true; placeWheel(pickMin); setTimeout(() => (ignoreScroll = false), 80); });
+
+  /* ---------- message crossfade ---------- */
+  const msgEl = $("msg"); let msgAnim;
+  function say(text) {
+    if (msgEl.dataset.t === text) return;
+    msgEl.dataset.t = text;
+    if (RM) { msgEl.textContent = text; return; }
+    msgAnim && msgAnim.cancel();
+    const out = msgEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease", fill: "forwards" });
+    msgAnim = out;
+    out.onfinish = () => {
+      msgEl.textContent = text; out.cancel();
+      msgAnim = msgEl.animate([{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 240, easing: EASE_OUT });
+    };
+  }
+
+  /* ---------- sound ---------- */
+  let ac, noise;
+  const audio = () => {
+    try {
+      if (!ac) {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        noise = ac.createBuffer(1, ac.sampleRate * 0.2, ac.sampleRate);
+        const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      if (ac.state === "suspended") ac.resume();
+      return ac;
+    } catch { return null; }
+  };
+  function tone(freq, vol, dur, at = 0) {
+    const a = audio(); if (!a) return;
+    const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function click(vol = 0.06, freq = 2600) {
+    const a = audio(); if (!a) return;
+    const t = a.currentTime, src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = noise; f.type = "bandpass"; f.frequency.value = freq; f.Q.value = 5;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.025);
+    src.connect(f).connect(g).connect(a.destination); src.start(t, Math.random() * 0.15); src.stop(t + 0.04);
+  }
+  const tick = () => click(0.05, 3400);
+  const chime = () => { tone(784, 0.16, 1.6); tone(1175, 0.1, 1.8, 0.28); tone(1568, 0.07, 2.2, 0.56); };
+
+  /* ---------- wake lock ---------- */
+  let lock = null;
+  async function wake(on) {
+    try {
+      if (on && !lock && "wakeLock" in navigator) { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", () => (lock = null)); }
+      if (!on && lock) { await lock.release(); lock = null; }
+    } catch { lock = null; }
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && running()) wake(true); });
+
+  /* ---------- the turning top: minute value over the pointer, tweened through segments ---------- */
+  let mDisp = liveMinutes(), tween = null, lastWhole = Math.floor(mDisp);
+  function play(segs, done) { if (RM) { tween = null; done && done(); return; } tween = { segs, i: 0, from: mDisp, t0: performance.now(), done }; }
+
+  /* ---------- actions ---------- */
+  function start() {
+    audio();
+    if (winding) return;
+    if (atRest()) {
+      if (pickMin === 0) { wheel.focus(); say("Scroll the wheel to pick a time first."); return; }
+      S.len = pickMin * 60000; S.remaining = S.len;
+      // the tomato is already on the picked minute (it follows the wheel), so it simply starts turning from there;
+      // if it was resting at 0 after a finished session, ease it to the picked minute first
+      if (zeroHold) { zeroHold = false; play([{ to: pickMin, dur: 700, ease: easeOut }]); }
+    }
+    begin();
+  }
+  function begin() { winding = false; S.endAt = Date.now() + S.remaining; save(); say("Focus. Everything else can wait."); wake(true); poke(); render(); }
+  function pause() { if (!running()) return; S.remaining = left(); S.endAt = null; save(); say("Paused."); wake(false); render(); }
+  function reset() { S.endAt = null; S.remaining = S.len; zeroHold = false; save(); wake(false); play([{ to: null, dur: 800, ease: easeInOut }]); say("Set a time, then focus on one thing."); render(); }
+  let glow = null;
+  function complete() {
+    S.endAt = null; S.remaining = 0; S.count++; zeroHold = true; save(); wake(false);
+    chime(); render(true);
+    if (!RM) glow = performance.now();
+    setTimeout(() => say("Done. Take a short break."), 120);
+  }
+
+  function render(celebrate) {
+    const active = !atRest() || winding, showPicker = atRest() && !winding;
+    const idle = $("g-idle"), run = $("g-run");
+    idle.classList.toggle("off", active); idle.inert = active;
+    run.classList.toggle("off", !active || winding); run.inert = !active || winding;
+    picker.classList.toggle("off", !showPicker); picker.inert = !showPicker;
+    timeEl.classList.toggle("off", showPicker);
+    $("start").textContent = pickMin === 0 ? "Pick a time" : S.remaining <= 0 ? "Again" : "Start";
+    $("pause").textContent = running() ? "Pause" : "Resume";
+    document.body.classList.toggle("paused", active && !running());
+    if (!running()) document.body.classList.remove("calm");
+    const t = $("tally"); t.innerHTML = "";
+    const n = Math.min(S.count, 12);
+    for (let i = 0; i < n; i++) {
+      const dot = document.createElement("i"); t.appendChild(dot);
+      if (celebrate && i === n - 1 && !RM) dot.animate([{ transform: "scale(.9)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }], { duration: 500, delay: 260, easing: EASE_OUT, fill: "backwards" });
+    }
+    if (S.count) { const s = document.createElement("span"); s.textContent = S.count + " today"; t.appendChild(s); }
+  }
+
+  /* ---------- frame loop ---------- */
+  let lastSec = -1;
+  function frame(now) {
+    if (tween) {
+      const seg = tween.segs[tween.i], x = Math.min(1, (now - tween.t0) / seg.dur);
+      const to = seg.to === null ? liveMinutes() : seg.to;
+      mDisp = tween.from + (to - tween.from) * seg.ease(x);
+      if (x >= 1) { tween.i++; tween.from = mDisp; tween.t0 = now; if (tween.i >= tween.segs.length) { const d = tween.done; tween = null; d && d(); } }
+      const whole = Math.floor(mDisp);
+      if (whole !== lastWhole) { lastWhole = whole; click(); }
+    } else { mDisp = liveMinutes(); lastWhole = Math.floor(mDisp); }
+
+    if (scene3.ok) {
+      const a = -mDisp * Math.PI / 30; // 6° per minute
+      if (Math.abs(a - scene3.top.rotation.y) > 1e-6) { scene3.top.rotation.y = a; scene3.needsRender = true; }
+      if (glow !== null) {
+        const x = (now - glow) / 1800;
+        scene3.renderer.toneMappingExposure = 1 + 0.32 * Math.pow(Math.sin(Math.PI * Math.min(1, x)), 2);
+        scene3.needsRender = true;
+        if (x >= 1) { glow = null; scene3.renderer.toneMappingExposure = 1; }
+      }
+      if (scene3.needsRender) { scene3.renderer.render(scene3.scene, scene3.camera); scene3.needsRender = false; }
+    }
+
+    const str = winding ? fmt(S.len) : atRest() ? (S.remaining <= 0 && zeroHold ? "00:00" : fmt(pickMin * 60000)) : fmt(left());
+    showTime(str, true);
+    if (running()) {
+      const sec = Math.ceil(left() / 1000);
+      if (sec !== lastSec) { lastSec = sec; if (S.tick) tick(); }
+      document.title = str + " · Pomodoro";
+    } else document.title = "Pomodoro";
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- quiet chrome while focusing ---------- */
+  let calmT;
+  function poke() {
+    document.body.classList.remove("calm"); clearTimeout(calmT);
+    if (running()) calmT = setTimeout(() => { if (running() && !q.classList.contains("holding")) document.body.classList.add("calm"); }, 3000);
+  }
+  ["pointermove", "pointerdown", "keydown"].forEach((e) => addEventListener(e, poke, { passive: true }));
+
+  /* ---------- hold to reset ---------- */
+  const q = $("quit"), overlay = q.querySelector(".overlay");
+  const holdOn = (e) => { if (e) e.preventDefault(); q.classList.add("holding"); };
+  const holdOff = () => q.classList.remove("holding");
+  q.addEventListener("pointerdown", (e) => { q.setPointerCapture?.(e.pointerId); holdOn(e); });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((e) => q.addEventListener(e, holdOff));
+  q.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) holdOn(e); });
+  q.addEventListener("keyup", (e) => { if (e.key === "Enter" || e.key === " ") holdOff(); });
+  q.addEventListener("click", (e) => e.preventDefault());
+  overlay.addEventListener("transitionend", (e) => { if (e.propertyName === "clip-path" && q.classList.contains("holding")) { holdOff(); reset(); } });
+
+  /* ---------- wiring ---------- */
+  $("start").onclick = start;
+  $("pause").onclick = () => (running() ? pause() : start());
+  const snd = $("sound");
+  snd.setAttribute("aria-pressed", S.tick);
+  snd.onclick = () => { S.tick = !S.tick; snd.setAttribute("aria-pressed", S.tick); save(); if (S.tick) tick(); };
+  $("fs").onclick = () => { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); } catch {} };
+  addEventListener("keydown", (e) => {
+    if (e.code !== "Space" || e.target.tagName === "BUTTON") return;
+    e.preventDefault(); running() ? pause() : start();
+  });
+  setInterval(() => {
+    if (S.day !== today()) { S.day = today(); S.count = 0; save(); render(); }
+    if (running() && left() <= 0) complete();
+  }, 200);
+
+  /* ---------- first paint ---------- */
+  if (running() && left() <= 0) complete();
+  if (running()) wake(true);
+  showTime(atRest() ? fmt(pickMin * 60000) : fmt(left()), false);
+  if (!atRest()) say(running() ? "Focus. Everything else can wait." : "Paused.");
+  placeWheel(DEFAULT_MIN); setTimeout(() => (ignoreScroll = false), 120);
+  render(); requestAnimationFrame(frame);
+
+  // entrance, once per visit: the tomato leads, the readout and controls follow on shrinking gaps, chrome only fades
+  const enter = (el, delay, dist, dur) => el.animate(
+    RM ? [{ opacity: 0 }, { opacity: 1 }]
+       : [{ opacity: 0, transform: `translateY(${dist}px) scale(${dist > 10 ? 0.97 : 1})` }, { opacity: 1, transform: "none" }],
+    { duration: dur, delay, easing: EASE_OUT, fill: "backwards" });
+  enter($("scene"), 0, 16, 700);
+  enter(timeEl, 90, 8, 600);
+  enter(msgEl, 150, 6, 500);
+  enter($("controls"), 190, 6, 500);
+  [$("top"), $("tally")].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: "ease", fill: "backwards" }));
+})();
+</script>
