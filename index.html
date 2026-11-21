@@ -1,5 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pomodoro</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A focus timer built around a realistic 3D tomato kitchen timer.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#F2F2EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1110" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pomodoro">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<script>
+  // Tag the platform before first paint so each device gets its native look.
+  (function () {
+    var ua = navigator.userAgent, d = document.documentElement;
+    var ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var android = /Android/i.test(ua);
+    d.classList.add(ios ? "ios" : android ? "android" : "desktop");
+    if (ios || android || matchMedia("(pointer: coarse)").matches) d.classList.add("touch");
+    if (navigator.standalone || matchMedia("(display-mode: standalone)").matches) d.classList.add("standalone");
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap">
@@ -40,7 +66,7 @@ body.paused .time { opacity: .42; }
 .slot .d { position: absolute; inset: 0; text-align: center; will-change: transform, opacity; }
 .colon { padding: 0 .02em; transform: translateY(-.06em); }
 /* readout cell: the minute wheel (before start) and the countdown (while running) share one place and crossfade */
-.readout { display: grid; place-items: center; --ih: clamp(28px, 4vh, 40px); min-height: calc(var(--ih) * 5); }
+.readout { display: grid; place-items: center; --ih: 34px; min-height: calc(var(--ih) * 5); }
 .readout > * { grid-area: 1 / 1; transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out), filter 250ms var(--ease-out), visibility 0s; }
 .readout > .off { opacity: 0; transform: translateY(4px) scale(.98); filter: blur(2px); visibility: hidden; pointer-events: none; transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out), filter 250ms var(--ease-out), visibility 0s 250ms; }
 
@@ -90,7 +116,89 @@ body.calm .fade { opacity: 0; pointer-events: none; transition: opacity 600ms ea
 body.calm { cursor: none; }
 
 @media (prefers-reduced-motion: reduce) { .group, .group.off { transform: none; filter: none; } }
+
+/* =====================================================================
+   Device layouts
+   ===================================================================== */
+html { -webkit-text-size-adjust: 100%; }
+body { overscroll-behavior: none; }
+button, .wheel { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.haptic { display: none; }
+
+/* phones and tablets: native feel, thumb-reachable controls, clear of notches and home indicators */
+html.touch body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+html.touch #fs { display: none; }
+html.touch .stage { padding-top: max(12px, env(safe-area-inset-top, 0px)); padding-bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 10px)); }
+html.touch .controls { min-height: 54px; }
+
+/* iPhone / iPad: Human Interface Guidelines. SF Pro, a large title, filled and gray buttons, the Clock app's thin digits */
+html.ios { --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif; }
+html.ios .brand { font-size: 2.125rem; font-weight: 700; letter-spacing: .01em; text-transform: none; color: var(--ink); }
+html.ios .time { font-family: -apple-system, "SF Pro Display", system-ui, sans-serif; font-weight: 200; letter-spacing: -.02em; }
+html.ios button:not(.icon) { border: 0; height: 50px; padding: 0 28px; border-radius: 14px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+html.ios button.primary { background: var(--tomato); color: #fff; box-shadow: none; min-width: min(72vw, 320px); }
+html.ios button:not(.primary):not(.icon) { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--tomato); min-width: 130px; }
+html.ios .hold .overlay { background: var(--tomato); color: #fff; }
+html.ios .picker .hl { border-radius: 9px; background: rgba(118, 118, 128, .14); }
+html.ios .wheel .it { font-size: calc(var(--ih) * .6); }
+html.ios .picker .unit { font-weight: 600; }
+html.ios .msg { font-size: 15px; letter-spacing: -.01em; }
+html.ios button.icon { width: 44px; height: 44px; color: var(--tomato); }
+
+/* Android: Material 3. Roboto, a top app bar title, filled and tonal pill buttons with state layers */
+html.android { --font: Roboto, "Google Sans Text", system-ui, sans-serif; }
+html.android .brand { font-size: 1.375rem; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink); }
+html.android .time { font-family: Roboto, system-ui, sans-serif; font-weight: 300; letter-spacing: -.01em; }
+html.android button:not(.icon) { border: 0; height: 48px; padding: 0 28px; border-radius: 999px; font-size: 14px; font-weight: 500; letter-spacing: .1px; }
+html.android button.primary { background: var(--tomato); color: #fff; box-shadow: none; min-width: min(64vw, 280px); }
+html.android button:not(.primary):not(.icon) { background: color-mix(in srgb, var(--tomato) 16%, var(--bg)); color: var(--ink); min-width: 120px; }
+html.android button:not(.icon):active { transform: none; box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .12); }
+html.android button:not(.primary):not(.icon):active { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--ink) 10%, transparent); }
+html.android .hold .overlay { background: var(--tomato); color: #fff; }
+html.android .picker .hl { border-radius: 16px; background: color-mix(in srgb, var(--tomato) 14%, transparent); }
+html.android button.icon { width: 48px; height: 48px; }
+
+/* wheel row height stays a whole number of pixels so scroll snapping lands exactly on a row */
+@media (max-height: 640px) { .readout { --ih: 30px; } }
+@media (min-height: 820px) { .readout { --ih: 40px; } }
+
+/* phones */
+@media (max-width: 600px) {
+  .scene { width: min(90vw, 40vh); }
+  .picker { width: min(240px, 70vw); }
+  .bottom { gap: 12px; }
+}
+
+/* tablets in portrait: same column, more room */
+@media (min-width: 601px) and (orientation: portrait) {
+  .scene { width: min(70vw, 44vh, 560px); }
+  .readout { --ih: 46px; }
+  .time { font-size: clamp(4rem, 9vh, 7rem); }
+  .picker { width: 300px; }
+}
+
+/* laptops, desktops and tablets in landscape: tomato on the left, the controls panel on the right */
+@media (min-width: 900px) and (orientation: landscape) {
+  .stage {
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto minmax(0, 1fr);
+    grid-template-areas: "top top" "scene ." "scene readout" "scene msg" "scene bottom" "scene .";
+    column-gap: clamp(24px, 4vw, 72px); row-gap: 18px;
+    padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); padding-block: 24px 32px;
+  }
+  .top { grid-area: top; }
+  .center { display: contents; }
+  .scene { grid-area: scene; place-self: center; width: min(48vw, 74vh, 680px); }
+  .readout { grid-area: readout; justify-self: start; --ih: 44px; }
+  .time { font-size: clamp(4.5rem, 10vh, 7.5rem); }
+  .picker { width: 300px; }
+  .msg { grid-area: msg; justify-self: start; text-align: left; }
+  .bottom { grid-area: bottom; justify-items: start; }
+  .controls { place-items: start; }
+}
 </style>
+</head>
+<body>
 
 <main class="stage">
   <div class="top fade" id="top">
@@ -401,6 +509,22 @@ body.calm { cursor: none; }
     if (changed) timeEl.setAttribute("aria-label", "Time left " + str);
   }
 
+  /* ---------- haptics ----------
+     iPhone: Safari has no vibrate API, but toggling a hidden switch-style checkbox (iOS 17.4+) plays the system selection tick.
+     Android: the Vibration API. Laptops: nothing. */
+  const IS_IOS = document.documentElement.classList.contains("ios");
+  function haptic(strong) {
+    try {
+      if (IS_IOS) {
+        const label = document.createElement("label"), input = document.createElement("input");
+        label.className = "haptic"; label.setAttribute("aria-hidden", "true");
+        input.type = "checkbox"; input.setAttribute("switch", ""); input.tabIndex = -1;
+        label.appendChild(input); document.head.appendChild(label); label.click(); label.remove();
+        if (strong) setTimeout(() => haptic(false), 110);
+      } else if (navigator.vibrate) navigator.vibrate(strong ? [24, 60, 24] : 7);
+    } catch {}
+  }
+
   /* ---------- minute wheel (0–55), Apple-style ---------- */
   const picker = $("picker"), wheel = $("wheel"), items = [];
   wheel.insertAdjacentHTML("beforeend", '<div class="sp" aria-hidden="true"></div>');
@@ -428,7 +552,7 @@ body.calm { cursor: none; }
     });
     if (sel !== pickMin) {
       pickMin = sel;
-      if (!ignoreScroll) click(0.035, 3000);
+      if (!ignoreScroll) { click(0.035, 3000); haptic(false); }
       render();
     }
   }
@@ -436,6 +560,7 @@ body.calm { cursor: none; }
     if (!ignoreScroll) zeroHold = false;
     if (!wheelRaf) wheelRaf = requestAnimationFrame(updateWheel);
   }, { passive: true });
+  wheel.addEventListener("scrollend", () => updateWheel());
   wheel.addEventListener("pointerdown", () => audio());
   wheel.addEventListener("click", (e) => { const it = e.target.closest(".it"); if (it) wheel.scrollTo({ top: +it.dataset.m * ih(), behavior: RM ? "auto" : "smooth" }); });
   wheel.addEventListener("keydown", (e) => {
@@ -519,11 +644,12 @@ body.calm { cursor: none; }
     }
     begin();
   }
-  function begin() { winding = false; S.endAt = Date.now() + S.remaining; save(); say("Focus. Everything else can wait."); wake(true); poke(); render(); }
+  function begin() { winding = false; S.endAt = Date.now() + S.remaining; haptic(false); save(); say("Focus. Everything else can wait."); wake(true); poke(); render(); }
   function pause() { if (!running()) return; S.remaining = left(); S.endAt = null; save(); say("Paused."); wake(false); render(); }
   function reset() { S.endAt = null; S.remaining = S.len; zeroHold = false; save(); wake(false); play([{ to: null, dur: 800, ease: easeInOut }]); say("Set a time, then focus on one thing."); render(); }
   let glow = null;
   function complete() {
+    haptic(true);
     S.endAt = null; S.remaining = 0; S.count++; zeroHold = true; save(); wake(false);
     chime(); render(true);
     if (!RM) glow = performance.now();
@@ -601,7 +727,7 @@ body.calm { cursor: none; }
   q.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) holdOn(e); });
   q.addEventListener("keyup", (e) => { if (e.key === "Enter" || e.key === " ") holdOff(); });
   q.addEventListener("click", (e) => e.preventDefault());
-  overlay.addEventListener("transitionend", (e) => { if (e.propertyName === "clip-path" && q.classList.contains("holding")) { holdOff(); reset(); } });
+  overlay.addEventListener("transitionend", (e) => { if (e.propertyName === "clip-path" && q.classList.contains("holding")) { holdOff(); haptic(true); reset(); } });
 
   /* ---------- wiring ---------- */
   $("start").onclick = start;
@@ -624,8 +750,20 @@ body.calm { cursor: none; }
   if (running()) wake(true);
   showTime(atRest() ? fmt(pickMin * 60000) : fmt(left()), false);
   if (!atRest()) say(running() ? "Focus. Everything else can wait." : "Paused.");
-  placeWheel(DEFAULT_MIN); setTimeout(() => (ignoreScroll = false), 120);
+  // home-screen shortcuts open "./?min=25&start=1" and friends
+  const params = new URLSearchParams(location.search);
+  const qMin = Math.round(Number(params.get("min")));
+  const startMin = qMin >= 1 && qMin <= 55 && atRest() ? qMin : DEFAULT_MIN;
+  if (params.has("min") || params.has("start")) history.replaceState(null, "", location.pathname);
+  placeWheel(startMin); pickPos = startMin; mDisp = startMin;
+  setTimeout(() => (ignoreScroll = false), 120);
   render(); requestAnimationFrame(frame);
+  if (params.get("start") === "1" && atRest() && startMin >= 1) setTimeout(start, 400);
+
+  // offline support and "Add to Home Screen"
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
 
   // entrance, once per visit: the tomato leads, the readout and controls follow on shrinking gaps, chrome only fades
   const enter = (el, delay, dist, dur) => el.animate(
@@ -639,3 +777,5 @@ body.calm { cursor: none; }
   [$("top"), $("tally")].forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: "ease", fill: "backwards" }));
 })();
 </script>
+</body>
+</html>
